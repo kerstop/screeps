@@ -1,4 +1,5 @@
 import { ErrorMapper } from "utils/ErrorMapper";
+import { Domain, DomainMemory } from "Domain";
 
 declare global {
   /*
@@ -11,14 +12,12 @@ declare global {
   */
   // Memory extension samples
   interface Memory {
-    uuid: number;
+    domains: { [name: string]: DomainMemory };
     log: any;
   }
 
-  interface CreepMemory {
-    role: string;
-    room: string;
-    working: boolean;
+  interface Creep {
+    memory: CreepMemory;
   }
 
   // Syntax for adding proprties to `global` (ex "global.log")
@@ -28,12 +27,21 @@ declare global {
     }
   }
 }
-
 // When compiling TS to JS and bundling with rollup, the line numbers and file names in error messages change
 // This utility uses source maps to get the line numbers and file names of the original, TS source code
 export const loop = ErrorMapper.wrapLoop(() => {
   console.log(`Current game tick is ${Game.time}`);
 
+  if (Game.cpu.bucket >= 10_000 * 0.95) Game.cpu.generatePixel();
+
+  if (Object.keys(Memory.domains).length === 0) {
+    Domain.createInitialDomain();
+  }
+
+  for (const domainName in Memory.domains) {
+    const domain = new Domain(domainName);
+    domain.run();
+  }
   // Automatically delete memory of missing creeps
   for (const name in Memory.creeps) {
     if (!(name in Game.creeps)) {
