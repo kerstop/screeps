@@ -1,5 +1,5 @@
 import { ErrorMapper } from "utils/ErrorMapper";
-import { Domain, DomainMemory } from "Domain";
+import { Domain, DomainMemory, initializeDomains } from "Domain";
 
 declare global {
   /*
@@ -20,6 +20,11 @@ declare global {
     memory: CreepMemory;
   }
 
+  interface CreepMemory {
+    role: string;
+    domain: string;
+  }
+
   // Syntax for adding proprties to `global` (ex "global.log")
   namespace NodeJS {
     interface Global {
@@ -34,9 +39,11 @@ export const loop = ErrorMapper.wrapLoop(() => {
 
   if (Game.cpu.bucket >= 10_000 * 0.95) Game.cpu.generatePixel();
 
-  if (Object.keys(Memory.domains).length === 0) {
+  if (Memory.domains === undefined) {
     Domain.createInitialDomain();
   }
+
+  initializeDomains();
 
   for (const domainName in Memory.domains) {
     const domain = new Domain(domainName);
@@ -49,3 +56,9 @@ export const loop = ErrorMapper.wrapLoop(() => {
     }
   }
 });
+
+(global as any).utilities = {
+  test: () => {
+    console.log("hello world");
+  },
+};
