@@ -1,6 +1,5 @@
 import * as QueensGuard from "QueensGuard";
 import { DeliverJob, Job, UpgradeJob } from "Domain/Job";
-import { Reservation, StructureWithStore } from "Domain/Reservation";
 
 declare global {
   interface SpawnMemory {
@@ -35,7 +34,7 @@ export function createInitialDomain() {
     creeps: [],
     level: 1,
     status: "feedingController",
-    reservations: [],
+    reservations: {},
   };
 }
 
@@ -45,12 +44,19 @@ interface CreepBehaviorModule {
   run(creep: Creep): void;
 }
 
+interface Reservation {
+  target: Id<AnyStoreStructure>;
+  resource: ResourceConstant;
+  creep: Id<Creep>;
+  amount: number;
+}
+
 export interface DomainMemory {
   rooms: string[];
   spawnIds: Id<StructureSpawn>[];
   creeps: string[];
 
-  reservations: Reservation[];
+  reservations: { [id: Id<AnyStoreStructure | Source>]: Reservation[] };
 
   level: number;
   status: "feedingController" | "upgrading";
@@ -60,6 +66,7 @@ export class Domain {
   name: string;
   memory: DomainMemory;
   mainSpawn: StructureSpawn;
+  controller: StructureController;
 
   jobList: Job[];
 
@@ -79,9 +86,51 @@ export class Domain {
       this.memory.spawnIds = this.memory.spawnIds.slice(1);
     }
     this.mainSpawn = mainSpawn;
+    this.controller = mainSpawn.room.controller as StructureController;
 
     this.memory.creeps = this.memory.creeps.filter(name => name in Game.creeps);
     this.jobList = this.generateJobList();
+  }
+
+  public getFreeCapacity(structure: AnyStoreStructure, resource: ResourceConstant): number {
+    const total_reservation = this.memory.reservations[structure.id].reduce((r1, r2) => {
+      if (r2.resource === resource) r1 += r2.amount;
+      return r1;
+    }, 0);
+
+    const capacity = structure.store.getCapacity(resource);
+    if (capacity === null) return 0;
+    return capacity - structure.store[resource] - total_reservation;
+  }
+
+  public getResouce(id: Id<AnyStoreStructure>, resource: ResourceConstant): number {
+    const total_reservation = this.memory.reservations[id].reduce((r1, r2) => {
+      if (r2.resource === resource) r1 += r2.amount;
+      return r1;
+    }, 0);
+
+    const obj = Game.getObjectById(id);
+    if (obj === null) {
+      return 0;
+    } else {
+      return ((obj as any).store as StoreDefinition)[resource] + total_reservation;
+    }
+  }
+
+  public createReservation(creep: Creep, structure: AnyStoreStructure, resource: ResourceConstant, amount: number) {
+    if (this.memory.reservations[structure.id] === undefined) this.memory.reservations[structure.id] = [];
+    this.memory.reservations[structure.id].push({
+      creep: creep.id,
+      target: structure.id,
+      resource: resource,
+      amount: amount,
+    });
+  }
+
+  public removeReservation(creep: Creep, structure: Id<AnyStoreStructure>, resource: ResourceConstant) {
+    this.memory.reservations[structure] = this.memory.reservations[structure].filter(
+      reservation => !(reservation.creep === creep.id && reservation.resource === resource)
+    );
   }
 
   generateJobList(): Job[] {
@@ -126,7 +175,7 @@ export class Domain {
     if (this.memory.level === 1) {
       if (this.memory.creeps.length < 5) {
         const name = `${QueensGuard.roleName}_${Game.time}`;
-        let r = this.mainSpawn.spawnCreep([WORK, CARRY, MOVE], name, {
+        let r = this.mainSpawn.spawnCreep([WORK, CARRY, CARRY, MOVE, MOVE], name, {
           memory: QueensGuard.getInitialMemory(this.name),
         });
         if (r === OK) {

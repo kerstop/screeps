@@ -1,5 +1,5 @@
 import { ErrorMapper } from "utils/ErrorMapper";
-import { Domain, DomainMemory, initializeDomains } from "Domain";
+import { createInitialDomain, Domain, DomainMemory, initializeDomains } from "Domain";
 
 declare global {
   /*
@@ -40,7 +40,7 @@ export const loop = ErrorMapper.wrapLoop(() => {
   if (Game.cpu.bucket >= 10_000 * 0.95) Game.cpu.generatePixel();
 
   if (Memory.domains === undefined) {
-    Domain.createInitialDomain();
+    createInitialDomain();
   }
 
   initializeDomains();
