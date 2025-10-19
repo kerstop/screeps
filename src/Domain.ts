@@ -56,7 +56,7 @@ export interface DomainMemory {
   spawnIds: Id<StructureSpawn>[];
   creeps: string[];
 
-  reservations: { [id: Id<AnyStoreStructure | Source>]: Reservation[] };
+  reservations: { [id: Id<AnyStoreStructure>]: Reservation[] | undefined };
 
   level: number;
   status: "feedingController" | "upgrading";
@@ -93,44 +93,46 @@ export class Domain {
   }
 
   public getFreeCapacity(structure: AnyStoreStructure, resource: ResourceConstant): number {
-    const total_reservation = this.memory.reservations[structure.id].reduce((r1, r2) => {
+    const total_reservation = this.memory.reservations[structure.id]?.reduce((r1, r2) => {
       if (r2.resource === resource) r1 += r2.amount;
       return r1;
     }, 0);
+    if (total_reservation === undefined) {
+      return structure.store.getFreeCapacity(resource) ?? 0;
+    }
 
     const capacity = structure.store.getCapacity(resource);
     if (capacity === null) return 0;
     return capacity - structure.store[resource] - total_reservation;
   }
 
-  public getResouce(id: Id<AnyStoreStructure>, resource: ResourceConstant): number {
-    const total_reservation = this.memory.reservations[id].reduce((r1, r2) => {
-      if (r2.resource === resource) r1 += r2.amount;
-      return r1;
-    }, 0);
+  public getResouce(structure: AnyStoreStructure, resource: ResourceConstant): number {
+    const total_reservation =
+      this.memory.reservations[structure.id]?.reduce((r1, r2) => {
+        if (r2.resource === resource) r1 += r2.amount;
+        return r1;
+      }, 0) ?? 0;
 
-    const obj = Game.getObjectById(id);
-    if (obj === null) {
-      return 0;
-    } else {
-      return ((obj as any).store as StoreDefinition)[resource] + total_reservation;
-    }
+    return structure.store[resource] + total_reservation;
   }
 
   public createReservation(creep: Creep, structure: AnyStoreStructure, resource: ResourceConstant, amount: number) {
-    if (this.memory.reservations[structure.id] === undefined) this.memory.reservations[structure.id] = [];
-    this.memory.reservations[structure.id].push({
+    let reservations = this.memory.reservations[structure.id];
+    if (reservations === undefined) reservations = [];
+    reservations.push({
       creep: creep.id,
       target: structure.id,
       resource: resource,
       amount: amount,
     });
+    this.memory.reservations[structure.id] = reservations;
   }
 
   public removeReservation(creep: Creep, structure: Id<AnyStoreStructure>, resource: ResourceConstant) {
-    this.memory.reservations[structure] = this.memory.reservations[structure].filter(
+    this.memory.reservations[structure] = this.memory.reservations[structure]?.filter(
       reservation => !(reservation.creep === creep.id && reservation.resource === resource)
     );
+    if (this.memory.reservations[structure]?.length === 0) this.memory.reservations[structure] = undefined;
   }
 
   generateJobList(): Job[] {
